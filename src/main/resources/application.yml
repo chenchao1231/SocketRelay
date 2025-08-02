@@ -1,0 +1,130 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: socket-relay
+  
+  # Database Configuration
+  datasource:
+    url: jdbc:h2:file:./data/socket_relay;DB_CLOSE_DELAY=-1;MODE=LEGACY
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.H2Dialect
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+  
+  # Security Configuration
+  security:
+    user:
+      name: admin
+      password: admin123
+      roles: ADMIN
+
+# Application Configuration
+app:
+  # Forwarding Engine Configuration
+  forwarding:
+    # TCP Configuration
+    tcp:
+      boss-threads: 1
+      worker-threads: 4
+      so-backlog: 1024
+      so-keepalive: true
+      tcp-nodelay: true
+      
+    # UDP Configuration  
+    udp:
+      worker-threads: 4
+      so-rcvbuf: 65536
+      so-sndbuf: 65536
+      
+    # Connection Management
+    connection:
+      max-connections: 10000
+      connection-timeout: 30000
+      idle-timeout: 300000
+      
+    # Heartbeat Configuration
+    heartbeat:
+      enabled: true
+      interval: 60000
+      max-failures: 3
+      packet-size: 8
+      
+    # Reconnection Configuration
+    reconnection:
+      enabled: true
+      interval: 5000
+      max-attempts: 10
+      
+  # Monitoring Configuration
+  monitoring:
+    metrics:
+      enabled: true
+      retention-hours: 24
+      collection-interval: 1000
+      
+    # Alert Configuration
+    alerts:
+      enabled: true
+      error-rate-threshold: 0.05
+      error-duration-threshold: 60000
+      notification-delay: 10000
+      
+  # Security Configuration
+  security:
+    session-timeout: 1800000  # 30 minutes
+    password-policy:
+      min-length: 8
+      require-uppercase: true
+      require-lowercase: true
+      require-digits: true
+      require-special-chars: true
+      
+    # IP Whitelist
+    ip-whitelist:
+      enabled: false
+      addresses: []
+      
+  # Audit Configuration
+  audit:
+    enabled: true
+    retention-days: 30
+    log-level: INFO
+    compress-old-logs: true
+
+# Logging Configuration
+logging:
+  level:
+    com.ux.relay: INFO
+    io.netty: WARN
+    org.springframework.security: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/socket-relay.log
+    max-size: 100MB
+    max-history: 30
+
+# Management Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
