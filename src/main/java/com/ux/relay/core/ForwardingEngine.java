@@ -3,12 +3,14 @@ package com.ux.relay.core;
 import com.ux.relay.entity.ForwardRule;
 import com.ux.relay.service.ConnectionService;
 import com.ux.relay.service.MetricsService;
+import com.ux.relay.config.UdpForwardingConfig;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +50,12 @@ public class ForwardingEngine {
     private ClientConnectionManager clientConnectionManager;
 
     @Autowired
+    private UdpSessionManager udpSessionManager;
+
+    @Autowired
+    private UdpBroadcastManager udpBroadcastManager;
+
+    @Autowired
     private com.ux.relay.service.ClientListenerStatusService clientListenerStatusService;
 
     @Autowired
@@ -77,6 +85,9 @@ public class ForwardingEngine {
     
     @Value("${app.forwarding.udp.so-sndbuf:65536}")
     private int udpSndBuf;
+
+    @Autowired
+    private UdpForwardingConfig udpForwardingConfig;
     
     // Netty事件循环组
     private EventLoopGroup tcpBossGroup;
@@ -92,11 +103,17 @@ public class ForwardingEngine {
     @PostConstruct
     public void init() {
         logger.info("初始化转发引擎...");
-        
+
+        // 打印配置信息
+        logger.info("UDP转发模式配置: {} (期望值: broadcast)", udpForwardingConfig.getMode());
+        logger.info("配置读取测试 - 是否为broadcast: {}", "broadcast".equalsIgnoreCase(udpForwardingConfig.getMode()));
+        logger.info("TCP Boss线程数: {}, TCP Worker线程数: {}, UDP Worker线程数: {}",
+                   tcpBossThreads, tcpWorkerThreads, udpWorkerThreads);
+
         // 初始化TCP事件循环组
         tcpBossGroup = new NioEventLoopGroup(tcpBossThreads);
         tcpWorkerGroup = new NioEventLoopGroup(tcpWorkerThreads);
-        
+
         // 初始化UDP事件循环组
         udpWorkerGroup = new NioEventLoopGroup(udpWorkerThreads);
 
@@ -146,7 +163,11 @@ public class ForwardingEngine {
         
         try {
             String ruleKey = generateRuleKey(rule);
-            
+            if (ruleKey == null) {
+                logger.error("无法生成规则键，启动转发失败: {}", rule.getRuleName());
+                return false;
+            }
+
             // 检查是否已经启动
             if (activeServers.containsKey(ruleKey)) {
                 logger.warn("转发规则已经启动: {}", rule.getRuleName());
@@ -154,9 +175,15 @@ public class ForwardingEngine {
             }
             
             boolean success = false;
-            
-            // 创建连接池
-            connectionPoolManager.createConnectionPool(rule);
+
+            // 根据协议类型和转发模式决定是否创建连接池
+            boolean needConnectionPool = needsConnectionPool(rule);
+            if (needConnectionPool) {
+                logger.info("创建连接池用于规则: {} ({})", rule.getRuleName(), rule.getProtocol());
+                connectionPoolManager.createConnectionPool(rule);
+            } else {
+                logger.info("跳过连接池创建，规则使用广播模式: {} ({})", rule.getRuleName(), rule.getProtocol());
+            }
 
             // 根据协议类型启动相应的服务器
             switch (rule.getProtocol()) {
@@ -214,6 +241,10 @@ public class ForwardingEngine {
     public boolean stopForwarding(ForwardRule rule) {
         try {
             String ruleKey = generateRuleKey(rule);
+            if (ruleKey == null) {
+                logger.error("无法生成规则键，停止转发失败: {}", rule.getRuleName());
+                return false;
+            }
             boolean success = true;
             
             // 根据协议类型停止相应的服务器
@@ -269,7 +300,12 @@ public class ForwardingEngine {
             ChannelFuture future = bootstrap.bind(bindAddress, rule.getSourcePort()).sync();
             
             if (future.isSuccess()) {
-                String serverKey = generateRuleKey(rule) + "_TCP";
+                String ruleKey = generateRuleKey(rule);
+                if (ruleKey == null) {
+                    logger.error("无法生成规则键，TCP服务器启动失败: {}", rule.getRuleName());
+                    return false;
+                }
+                String serverKey = ruleKey + "_TCP";
                 activeServers.put(serverKey, future.channel());
                 logger.info("TCP转发服务器启动成功: {}:{}", bindAddress, rule.getSourcePort());
                 return true;
@@ -289,28 +325,92 @@ public class ForwardingEngine {
      */
     private boolean startUdpForwarding(ForwardRule rule) {
         try {
+            logger.info("启动UDP转发 - 规则ID: {}, 转发模式: {}, 源端口: {}, 目标端口: {}",
+                       rule.getId(), udpForwardingConfig.getMode(), rule.getSourcePort(), rule.getTargetPort());
+
+            if ("broadcast".equalsIgnoreCase(udpForwardingConfig.getMode())) {
+                // 使用广播模式
+                logger.info("使用UDP广播模式启动转发服务");
+                return startUdpBroadcastForwarding(rule);
+            } else {
+                // 使用点对点模式（默认）
+                logger.info("使用UDP点对点模式启动转发服务");
+                return startUdpPointToPointForwarding(rule);
+            }
+        } catch (Exception e) {
+            logger.error("启动UDP转发异常", e);
+            return false;
+        }
+    }
+
+    /**
+     * 启动UDP点对点转发（原有模式）
+     */
+    private boolean startUdpPointToPointForwarding(ForwardRule rule) {
+        try {
             Bootstrap bootstrap = new Bootstrap();
             bootstrap.group(udpWorkerGroup)
                     .channel(NioDatagramChannel.class)
                     .option(ChannelOption.SO_RCVBUF, udpRcvBuf)
                     .option(ChannelOption.SO_SNDBUF, udpSndBuf)
-                    .handler(new UdpForwardingChannelHandler(rule, connectionService, metricsService));
-            
+                    .handler(new UdpForwardingChannelHandler(rule, connectionService, metricsService, udpSessionManager));
+
             String bindAddress = rule.getSourceIp() != null ? rule.getSourceIp() : "0.0.0.0";
             ChannelFuture future = bootstrap.bind(bindAddress, rule.getSourcePort()).sync();
-            
+
             if (future.isSuccess()) {
-                String serverKey = generateRuleKey(rule) + "_UDP";
+                String ruleKey = generateRuleKey(rule);
+                if (ruleKey == null) {
+                    logger.error("无法生成规则键，UDP点对点服务器启动失败: {}", rule.getRuleName());
+                    return false;
+                }
+                String serverKey = ruleKey + "_UDP";
                 activeServers.put(serverKey, future.channel());
-                logger.info("UDP转发服务器启动成功: {}:{}", bindAddress, rule.getSourcePort());
+                logger.info("UDP点对点转发服务器启动成功: {}:{}", bindAddress, rule.getSourcePort());
                 return true;
             } else {
-                logger.error("UDP转发服务器启动失败: {}:{}", bindAddress, rule.getSourcePort());
+                logger.error("UDP点对点转发服务器启动失败: {}:{}", bindAddress, rule.getSourcePort());
                 return false;
             }
-            
+
         } catch (Exception e) {
-            logger.error("启动UDP转发异常", e);
+            logger.error("启动UDP点对点转发异常", e);
+            return false;
+        }
+    }
+
+    /**
+     * 启动UDP广播转发（新模式）
+     */
+    private boolean startUdpBroadcastForwarding(ForwardRule rule) {
+        try {
+            udpBroadcastManager.startUdpBroadcast(rule, udpWorkerGroup);
+
+            // 记录服务器信息（用于停止时清理）
+            logger.debug("准备生成规则键 - 规则名: {}, 源IP: {}, 源端口: {}",
+                        rule.getRuleName(), rule.getSourceIp(), rule.getSourcePort());
+            String ruleKey = generateRuleKey(rule);
+            logger.debug("生成的规则键: {}", ruleKey);
+
+            if (ruleKey == null) {
+                logger.error("无法生成规则键，UDP广播服务器启动失败: {}", rule.getRuleName());
+                return false;
+            }
+            String serverKey = ruleKey + "_UDP_BROADCAST";
+            logger.debug("准备存储服务器键: {}", serverKey);
+
+            // 这里我们不存储Channel，因为广播模式使用两个Channel
+            // 而是通过UdpBroadcastManager来管理
+            // 注意：ConcurrentHashMap不允许null值，所以我们使用一个占位符Channel
+            Channel placeholderChannel = new EmbeddedChannel();
+            activeServers.put(serverKey, placeholderChannel);
+
+            logger.info("UDP广播转发服务器启动成功: 下游端口={}, 上游端口={}",
+                       rule.getSourcePort(), rule.getTargetPort());
+            return true;
+
+        } catch (Exception e) {
+            logger.error("启动UDP广播转发异常", e);
             return false;
         }
     }
@@ -319,6 +419,27 @@ public class ForwardingEngine {
      * 停止指定服务器
      */
     private boolean stopServer(String serverKey) {
+        // 检查是否是UDP广播模式
+        if (serverKey.endsWith("_UDP_BROADCAST")) {
+            activeServers.remove(serverKey);
+            // 从serverKey中提取规则ID
+            String ruleKeyPart = serverKey.replace("_UDP_BROADCAST", "");
+            try {
+                // 解析规则ID（假设serverKey格式为 "rule_<id>_UDP_BROADCAST"）
+                String[] parts = ruleKeyPart.split("_");
+                if (parts.length >= 2) {
+                    Long ruleId = Long.parseLong(parts[1]);
+                    udpBroadcastManager.stopUdpBroadcast(ruleId);
+                    logger.info("UDP广播服务器停止成功: {}", serverKey);
+                    return true;
+                }
+            } catch (Exception e) {
+                logger.error("停止UDP广播服务器异常: {}", serverKey, e);
+                return false;
+            }
+        }
+
+        // 原有的点对点模式停止逻辑
         Channel channel = activeServers.remove(serverKey);
         if (channel != null && channel.isActive()) {
             try {
@@ -358,9 +479,22 @@ public class ForwardingEngine {
      * 生成规则键
      */
     private String generateRuleKey(ForwardRule rule) {
-        return String.format("%s_%d", 
-                            rule.getSourceIp() != null ? rule.getSourceIp() : "0.0.0.0", 
-                            rule.getSourcePort());
+        if (rule == null) {
+            logger.error("规则对象为null，无法生成规则键");
+            return null;
+        }
+
+        String sourceIp = rule.getSourceIp() != null ? rule.getSourceIp() : "0.0.0.0";
+        Integer sourcePort = rule.getSourcePort();
+
+        if (sourcePort == null) {
+            logger.error("规则源端口为null，无法生成规则键: {}", rule.getRuleName());
+            return null;
+        }
+
+        String ruleKey = String.format("%s_%d", sourceIp, sourcePort);
+        logger.debug("生成规则键: {} -> {}", rule.getRuleName(), ruleKey);
+        return ruleKey;
     }
     
     /**
@@ -375,5 +509,26 @@ public class ForwardingEngine {
      */
     public boolean isRunning() {
         return running.get();
+    }
+
+    /**
+     * 判断规则是否需要连接池
+     * UDP广播模式不需要连接池，其他模式需要
+     */
+    private boolean needsConnectionPool(ForwardRule rule) {
+        if (rule.getProtocol() == ForwardRule.ProtocolType.UDP) {
+            // UDP协议需要检查转发模式
+            if ("broadcast".equalsIgnoreCase(udpForwardingConfig.getMode())) {
+                logger.debug("UDP广播模式不需要连接池: {}", rule.getRuleName());
+                return false;
+            } else {
+                logger.debug("UDP点对点模式需要连接池: {}", rule.getRuleName());
+                return true;
+            }
+        } else {
+            // TCP和TCP_UDP模式都需要连接池
+            logger.debug("TCP模式需要连接池: {}", rule.getRuleName());
+            return true;
+        }
     }
 }

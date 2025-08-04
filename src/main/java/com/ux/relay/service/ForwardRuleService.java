@@ -354,6 +354,12 @@ public class ForwardRuleService {
         
         for (ForwardRule rule : enabledRules) {
             try {
+                // 验证规则数据完整性
+                if (!validateRule(rule)) {
+                    logger.error("规则数据不完整，跳过启动: {}", rule.getRuleName());
+                    continue;
+                }
+
                 boolean success = forwardingEngine.startForwarding(rule);
                 if (success) {
                     successCount++;
@@ -367,6 +373,57 @@ public class ForwardRuleService {
         }
         
         logger.info("转发规则启动完成: {}/{}", successCount, enabledRules.size());
+    }
+
+    /**
+     * 验证规则数据完整性
+     */
+    private boolean validateRule(ForwardRule rule) {
+        if (rule == null) {
+            logger.error("规则对象为null");
+            return false;
+        }
+
+        if (rule.getRuleName() == null || rule.getRuleName().trim().isEmpty()) {
+            logger.error("规则名称为空: {}", rule.getId());
+            return false;
+        }
+
+        if (rule.getProtocol() == null) {
+            logger.error("规则协议为null: {}", rule.getRuleName());
+            return false;
+        }
+
+        if (rule.getSourcePort() == null) {
+            logger.error("规则源端口为null: {}", rule.getRuleName());
+            return false;
+        }
+
+        if (rule.getTargetPort() == null) {
+            logger.error("规则目标端口为null: {}", rule.getRuleName());
+            return false;
+        }
+
+        if (rule.getTargetIp() == null || rule.getTargetIp().trim().isEmpty()) {
+            logger.error("规则目标IP为空: {}", rule.getRuleName());
+            return false;
+        }
+
+        // 端口范围检查
+        if (rule.getSourcePort() < 1 || rule.getSourcePort() > 65535) {
+            logger.error("规则源端口超出范围: {} -> {}", rule.getRuleName(), rule.getSourcePort());
+            return false;
+        }
+
+        if (rule.getTargetPort() < 1 || rule.getTargetPort() > 65535) {
+            logger.error("规则目标端口超出范围: {} -> {}", rule.getRuleName(), rule.getTargetPort());
+            return false;
+        }
+
+        logger.debug("规则验证通过: {} ({}:{} -> {}:{})",
+                    rule.getRuleName(), rule.getSourceIp(), rule.getSourcePort(),
+                    rule.getTargetIp(), rule.getTargetPort());
+        return true;
     }
     
     /**

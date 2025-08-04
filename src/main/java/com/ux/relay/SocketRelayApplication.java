@@ -8,6 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableAsync
 @EnableScheduling
+@org.springframework.boot.context.properties.EnableConfigurationProperties(com.ux.relay.config.UdpForwardingConfig.class)
 public class SocketRelayApplication {
 
   public static void main(String[] args) {

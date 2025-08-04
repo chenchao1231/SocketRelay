@@ -44,11 +44,22 @@ app:
       so-keepalive: true
       tcp-nodelay: true
       
-    # UDP Configuration  
+    # UDP Configuration
     udp:
       worker-threads: 4
       so-rcvbuf: 65536
       so-sndbuf: 65536
+      # UDP会话管理配置
+      session:
+        timeout-ms: 300000      # 会话超时时间（5分钟）
+        cleanup-interval-ms: 60000  # 清理间隔（1分钟）
+      # UDP转发模式配置
+      forwarding:
+        mode: broadcast         # 转发模式: point-to-point(点对点) 或 broadcast(广播)
+        broadcast:
+          enable-subscription: true    # 是否启用订阅机制
+          client-timeout-ms: 300000    # 客户端超时时间（5分钟）
+          heartbeat-interval-ms: 60000 # 心跳检查间隔（1分钟）
       
     # Connection Management
     connection:
@@ -108,7 +119,7 @@ app:
 # Logging Configuration
 logging:
   level:
-    com.ux.relay: INFO
+    com.ux.relay: debug
     io.netty: WARN
     org.springframework.security: WARN
   pattern:

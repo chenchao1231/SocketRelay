@@ -101,6 +101,122 @@ function bindNavigationEvents() {
     console.log('导航事件绑定完成');
 }
 
+// 绑定表单事件
+function bindFormEvents() {
+    console.log('绑定表单事件...');
+
+    // 监听协议类型变化
+    const protocolSelect = document.getElementById('protocol');
+    if (protocolSelect) {
+        protocolSelect.addEventListener('change', function() {
+            updateFieldLabels(this.value);
+        });
+
+        // 初始化时也要更新一次
+        updateFieldLabels(protocolSelect.value);
+    }
+
+    console.log('表单事件绑定完成');
+}
+
+// 根据协议类型更新字段标签
+function updateFieldLabels(protocol) {
+    const sourcePortLabel = document.getElementById('sourcePortLabel');
+    const sourcePortHelp = document.getElementById('sourcePortHelp');
+    const targetPortLabel = document.getElementById('targetPortLabel');
+    const targetPortHelp = document.getElementById('targetPortHelp');
+    const targetIpLabel = document.getElementById('targetIpLabel');
+    const targetIpHelp = document.getElementById('targetIpHelp');
+
+    if (!sourcePortLabel || !targetPortLabel || !targetIpLabel) {
+        return; // 如果元素不存在，直接返回
+    }
+
+    // 查找UDP使用说明按钮
+    const udpHelpButton = document.querySelector('button[onclick="showUdpUsageHelp()"]');
+
+    if (protocol === 'UDP') {
+        // UDP广播模式的标签
+        sourcePortLabel.textContent = '下游监听端口';
+        sourcePortHelp.textContent = '供客户端连接和订阅的端口号';
+
+        targetPortLabel.textContent = '上游接收端口';
+        targetPortHelp.textContent = '接收需要广播的数据的端口号';
+
+        targetIpLabel.textContent = '服务器IP';
+        targetIpHelp.textContent = '本服务器的IP地址（通常填写 0.0.0.0）';
+
+        // 显示UDP使用说明按钮
+        if (udpHelpButton) {
+            udpHelpButton.style.display = 'inline-block';
+        }
+
+    } else {
+        // TCP/UDP点对点模式的标签
+        sourcePortLabel.textContent = '监听端口';
+        sourcePortHelp.textContent = '本服务监听的端口号';
+
+        targetPortLabel.textContent = '转发目标端口';
+        targetPortHelp.textContent = '数据转发到的目标端口号';
+
+        targetIpLabel.textContent = '转发目标IP';
+        targetIpHelp.textContent = '数据转发到的目标服务器IP地址';
+
+        // 隐藏UDP使用说明按钮
+        if (udpHelpButton) {
+            udpHelpButton.style.display = 'none';
+        }
+    }
+}
+
+// 根据协议类型更新编辑表单的字段标签
+function updateEditFieldLabels(protocol) {
+    const sourcePortLabel = document.getElementById('editSourcePortLabel');
+    const sourcePortHelp = document.getElementById('editSourcePortHelp');
+    const targetPortLabel = document.getElementById('editTargetPortLabel');
+    const targetPortHelp = document.getElementById('editTargetPortHelp');
+    const targetIpLabel = document.getElementById('editTargetIpLabel');
+    const targetIpHelp = document.getElementById('editTargetIpHelp');
+    const udpHelpButton = document.getElementById('editUdpHelpButton');
+
+    if (!sourcePortLabel || !targetPortLabel || !targetIpLabel) {
+        return; // 如果元素不存在，直接返回
+    }
+
+    if (protocol === 'UDP') {
+        // UDP广播模式的标签
+        sourcePortLabel.textContent = '下游监听端口';
+        sourcePortHelp.textContent = '供客户端连接和订阅的端口号';
+
+        targetPortLabel.textContent = '上游接收端口';
+        targetPortHelp.textContent = '接收需要广播的数据的端口号';
+
+        targetIpLabel.textContent = '服务器IP';
+        targetIpHelp.textContent = '本服务器的IP地址（通常填写 0.0.0.0）';
+
+        // 显示UDP使用说明按钮
+        if (udpHelpButton) {
+            udpHelpButton.style.display = 'inline-block';
+        }
+
+    } else {
+        // TCP/UDP点对点模式的标签
+        sourcePortLabel.textContent = '监听端口';
+        sourcePortHelp.textContent = '本服务监听的端口号';
+
+        targetPortLabel.textContent = '转发目标端口';
+        targetPortHelp.textContent = '数据转发到的目标端口号';
+
+        targetIpLabel.textContent = '转发目标IP';
+        targetIpHelp.textContent = '数据转发到的目标服务器IP地址';
+
+        // 隐藏UDP使用说明按钮
+        if (udpHelpButton) {
+            udpHelpButton.style.display = 'none';
+        }
+    }
+}
+
 // IP访问控制相关函数
 
 // 加载IP访问控制数据
@@ -618,6 +734,9 @@ function initializeApp() {
     // 绑定导航事件
     bindNavigationEvents();
 
+    // 绑定表单事件
+    bindFormEvents();
+
     console.log('系统初始化完成');
 }
 
@@ -1034,7 +1153,30 @@ function updateRulesTable(rules, statusList) {
 
     rules.forEach(rule => {
         const status = statusMap[rule.id];
-        const dataSourceName = rule.dataSourceName || `${rule.targetIp}:${rule.targetPort}`;
+
+        // 根据协议类型生成不同的显示信息
+        let forwardingConfig = '';
+        let portDisplay = '';
+
+        if (rule.protocol === 'UDP') {
+            // UDP广播模式
+            portDisplay = `<code>${rule.sourcePort}</code>`;
+            forwardingConfig = `
+                <div class="small">
+                    <i class="bi bi-arrow-down-circle text-success"></i> 下游: ${rule.sourcePort}<br>
+                    <i class="bi bi-arrow-up-circle text-warning"></i> 上游: ${rule.targetPort}
+                </div>
+            `;
+        } else {
+            // TCP/UDP点对点模式
+            const dataSourceName = rule.dataSourceName || `${rule.targetIp}:${rule.targetPort}`;
+            portDisplay = `<code>${rule.sourcePort}</code>`;
+            forwardingConfig = `
+                <div>${dataSourceName}</div>
+                ${status && status.reconnectionAttempts > 0 ?
+                    `<small class="text-warning">重连尝试: ${status.reconnectionAttempts}</small>` : ''}
+            `;
+        }
 
         const row = document.createElement('tr');
         row.style.cursor = 'pointer';
@@ -1044,19 +1186,19 @@ function updateRulesTable(rules, statusList) {
                 <strong>${rule.ruleName}</strong>
                 ${rule.remark ? `<br><small class="text-muted">${rule.remark}</small>` : ''}
             </td>
-            <td><span class="badge bg-info">${rule.protocol}</span></td>
-            <td><code>${rule.sourcePort}</code></td>
             <td>
-                <div>${dataSourceName}</div>
-                ${status && status.reconnectionAttempts > 0 ?
-                    `<small class="text-warning">重连尝试: ${status.reconnectionAttempts}</small>` : ''}
+                <span class="badge ${rule.protocol === 'UDP' ? 'bg-warning' : 'bg-info'}">${rule.protocol}</span>
+                ${rule.protocol === 'UDP' ? '<br><small class="text-muted">广播模式</small>' : ''}
             </td>
+            <td>${portDisplay}</td>
+            <td>${forwardingConfig}</td>
             <td>
                 ${status ? getDataSourceStatusBadge(status.connectionStatus, status.activeDataSourceConnections, status.totalDataSourceConnections) :
                     '<span class="badge bg-secondary">未知</span>'}
             </td>
             <td>
                 <span class="badge bg-primary">${status ? status.clientConnections : 0}</span>
+                ${rule.protocol === 'UDP' ? '<br><small class="text-muted">订阅数</small>' : ''}
             </td>
             <td>
                 <span class="badge ${rule.enabled ? 'bg-success' : 'bg-secondary'}">
@@ -1253,6 +1395,17 @@ function refreshData() {
 
 // 显示添加规则模态框
 function showAddRuleModal() {
+    // 重置表单并设置默认值
+    const form = document.getElementById('addRuleForm');
+    form.reset();
+
+    // 设置默认的目标IP为0.0.0.0（适合UDP广播模式）
+    document.getElementById('targetIp').value = '0.0.0.0';
+
+    // 初始化字段标签
+    const protocolSelect = document.getElementById('protocol');
+    updateFieldLabels(protocolSelect.value);
+
     const modal = new bootstrap.Modal(document.getElementById('addRuleModal'));
     modal.show();
 }
@@ -1289,6 +1442,9 @@ function addRule() {
             showToast('规则添加成功', 'success');
             bootstrap.Modal.getInstance(document.getElementById('addRuleModal')).hide();
             form.reset();
+            // 重置后设置默认值
+            document.getElementById('targetIp').value = '0.0.0.0';
+            updateFieldLabels('TCP'); // 重置为默认标签
             loadRulesData();
         } else {
             showToast('添加失败: ' + data.message, 'error');
@@ -1393,29 +1549,42 @@ function showEditRuleModal(rule) {
                                     <div id="coreConfigSection">
                                         <div class="mb-3">
                                             <label for="editProtocol" class="form-label">协议类型</label>
-                                            <select class="form-select" id="editProtocol" required>
-                                                <option value="TCP">TCP</option>
-                                                <option value="UDP">UDP</option>
-                                                <option value="TCP_UDP">TCP+UDP</option>
+                                            <select class="form-select" id="editProtocol" required onchange="updateEditFieldLabels(this.value)">
+                                                <option value="TCP">TCP - 点对点转发</option>
+                                                <option value="UDP">UDP - 一对多广播</option>
+                                                <option value="TCP_UDP">TCP+UDP - 混合模式</option>
                                             </select>
+                                            <div class="form-text">
+                                                <div id="editProtocolHelp">
+                                                    <strong>TCP</strong>: 传统的点对点转发模式<br>
+                                                    <strong>UDP</strong>: 一对多广播模式，支持客户端订阅机制<br>
+                                                    <strong>TCP+UDP</strong>: 同时支持TCP和UDP协议
+                                                </div>
+                                                <button type="button" class="btn btn-link btn-sm p-0 mt-1" onclick="showUdpUsageHelp()" id="editUdpHelpButton" style="display: none;">
+                                                    <i class="bi bi-question-circle"></i> UDP广播模式使用说明
+                                                </button>
+                                            </div>
                                         </div>
                                         <div class="row">
                                             <div class="col-md-6">
                                                 <div class="mb-3">
-                                                    <label for="editSourcePort" class="form-label">源端口</label>
+                                                    <label for="editSourcePort" class="form-label" id="editSourcePortLabel">监听端口</label>
                                                     <input type="number" class="form-control" id="editSourcePort" min="1" max="65535" required>
+                                                    <div class="form-text" id="editSourcePortHelp">本服务监听的端口号</div>
                                                 </div>
                                             </div>
                                             <div class="col-md-6">
                                                 <div class="mb-3">
-                                                    <label for="editTargetPort" class="form-label">目标端口</label>
+                                                    <label for="editTargetPort" class="form-label" id="editTargetPortLabel">转发目标端口</label>
                                                     <input type="number" class="form-control" id="editTargetPort" min="1" max="65535" required>
+                                                    <div class="form-text" id="editTargetPortHelp">数据转发到的目标端口号</div>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="mb-3">
-                                            <label for="editTargetIp" class="form-label">目标IP</label>
+                                            <label for="editTargetIp" class="form-label" id="editTargetIpLabel">转发目标IP</label>
                                             <input type="text" class="form-control" id="editTargetIp" required>
+                                            <div class="form-text" id="editTargetIpHelp">数据转发到的目标服务器IP地址</div>
                                         </div>
                                     </div>
 
@@ -1475,6 +1644,9 @@ function showEditRuleModal(rule) {
     document.getElementById('editTargetIp').value = rule.targetIp || '';
     document.getElementById('editTargetPort').value = rule.targetPort || '';
     document.getElementById('editDataSourceName').value = rule.dataSourceName || '';
+
+    // 更新字段标签
+    updateEditFieldLabels(rule.protocol || 'TCP');
     document.getElementById('editRemark').value = rule.remark || '';
     document.getElementById('editAutoReconnect').value = rule.autoReconnect ? 'true' : 'false';
     document.getElementById('editReconnectInterval').value = (rule.reconnectInterval || 5000) / 1000;
@@ -1600,7 +1772,7 @@ function showClientConnectionsModal(details) {
                                 <table class="table table-sm table-borderless">
                                     <tr><td><strong>规则状态:</strong></td><td><span class="badge ${rule.enabled ? 'bg-success' : 'bg-secondary'}">${rule.enabled ? '启用' : '禁用'}</span></td></tr>
                                     <tr><td><strong>数据源状态:</strong></td><td>${poolStatus ? getDataSourceStatusBadge(poolStatus.status, poolStatus.activeConnections, poolStatus.totalConnections) : '<span class="badge bg-secondary">未知</span>'}</td></tr>
-                                    <tr><td><strong>客户端连接数:</strong></td><td><span class="badge bg-primary">${clientStats ? clientStats.connectionCount : 0}</span></td></tr>
+                                    <tr><td><strong>客户端连接数:</strong></td><td>${getClientConnectionBadge(rule, clientStats)}</td></tr>
                                     <tr><td><strong>重连尝试:</strong></td><td>${poolStatus ? poolStatus.reconnectionAttempts : 0} 次</td></tr>
                                 </table>
                             </div>
@@ -1765,6 +1937,7 @@ function formatDuration(startTimeStr) {
 
 // 显示规则详情
 function showRuleDetails(ruleId) {
+    // 首先获取规则基本信息
     fetch(`/api/rules/${ruleId}/status`)
         .then(response => response.json())
         .then(data => {
@@ -1772,7 +1945,50 @@ function showRuleDetails(ruleId) {
                 const status = data.data;
                 const rule = status.rule;
                 const poolStatus = status.poolStatus;
-                const clientStats = status.clientStats;
+                let clientStats = status.clientStats;
+
+                // 如果是UDP协议，尝试获取UDP广播客户端统计
+                if (rule.protocol === 'UDP') {
+                    fetch(`/api/udp-broadcast/clients/${ruleId}`)
+                        .then(response => response.json())
+                        .then(udpData => {
+                            if (udpData.success) {
+                                // 使用UDP广播的客户端统计数据
+                                const udpClientStats = udpData.data;
+                                clientStats = {
+                                    connectionCount: udpClientStats.totalClientCount,
+                                    downstreamClientCount: udpClientStats.downstreamClientCount,
+                                    upstreamClientCount: udpClientStats.upstreamClientCount,
+                                    totalReceivedBytes: udpClientStats.totalReceivedBytes,
+                                    totalSentBytes: udpClientStats.totalSentBytes,
+                                    totalReceivedPackets: udpClientStats.totalReceivedPackets,
+                                    totalSentPackets: udpClientStats.totalSentPackets,
+                                    cachedDataSize: 0,
+                                    downstreamClients: udpClientStats.downstreamClients,
+                                    upstreamClients: udpClientStats.upstreamClients
+                                };
+                            }
+                            showRuleDetailsModal(rule, poolStatus, clientStats);
+                        })
+                        .catch(error => {
+                            console.warn('获取UDP广播客户端统计失败，使用默认统计:', error);
+                            showRuleDetailsModal(rule, poolStatus, clientStats);
+                        });
+                } else {
+                    showRuleDetailsModal(rule, poolStatus, clientStats);
+                }
+            } else {
+                showAlert('获取规则详情失败: ' + data.message, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('获取规则详情失败:', error);
+            showAlert('获取规则详情失败', 'danger');
+        });
+}
+
+// 显示规则详情模态框
+function showRuleDetailsModal(rule, poolStatus, clientStats) {
 
                 let detailsHtml = `
                     <div class="row">
@@ -1808,14 +2024,28 @@ function showRuleDetails(ruleId) {
                 }
 
                 if (clientStats) {
-                    detailsHtml += `
-                                <tr><td>客户端连接数:</td><td>${clientStats.connectionCount}</td></tr>
+                    if (rule.protocol === 'UDP' && clientStats.downstreamClientCount !== undefined) {
+                        // UDP广播模式的详细统计
+                        detailsHtml += `
+                                <tr><td>总客户端数:</td><td><span class="badge bg-primary">${clientStats.connectionCount}</span></td></tr>
+                                <tr><td>下游客户端:</td><td><span class="badge bg-info">${clientStats.downstreamClientCount}</span> (端口 ${rule.sourcePort})</td></tr>
+                                <tr><td>上游客户端:</td><td><span class="badge bg-success">${clientStats.upstreamClientCount}</span> (端口 ${rule.targetPort})</td></tr>
                                 <tr><td>接收字节数:</td><td>${formatBytes(clientStats.totalReceivedBytes)}</td></tr>
                                 <tr><td>发送字节数:</td><td>${formatBytes(clientStats.totalSentBytes)}</td></tr>
                                 <tr><td>接收包数:</td><td>${clientStats.totalReceivedPackets}</td></tr>
                                 <tr><td>发送包数:</td><td>${clientStats.totalSentPackets}</td></tr>
-                                <tr><td>缓存数据:</td><td>${formatBytes(clientStats.cachedDataSize)}</td></tr>
-                    `;
+                        `;
+                    } else {
+                        // 传统模式的统计
+                        detailsHtml += `
+                                <tr><td>客户端连接数:</td><td><span class="badge bg-primary">${clientStats.connectionCount}</span></td></tr>
+                                <tr><td>接收字节数:</td><td>${formatBytes(clientStats.totalReceivedBytes)}</td></tr>
+                                <tr><td>发送字节数:</td><td>${formatBytes(clientStats.totalSentBytes)}</td></tr>
+                                <tr><td>接收包数:</td><td>${clientStats.totalReceivedPackets}</td></tr>
+                                <tr><td>发送包数:</td><td>${clientStats.totalSentPackets}</td></tr>
+                                <tr><td>缓存数据:</td><td>${formatBytes(clientStats.cachedDataSize || 0)}</td></tr>
+                        `;
+                    }
                 }
 
                 detailsHtml += `
@@ -1826,15 +2056,6 @@ function showRuleDetails(ruleId) {
 
                 // 显示模态框
                 showModal('规则详情 - ' + rule.ruleName, detailsHtml);
-
-            } else {
-                showToast('获取规则详情失败: ' + data.message, 'error');
-            }
-        })
-        .catch(error => {
-            console.error('获取规则详情失败:', error);
-            showToast('获取规则详情失败', 'error');
-        });
 }
 
 // 显示模态框
@@ -1944,6 +2165,31 @@ function formatBytes(bytes) {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// 获取客户端连接数徽章
+function getClientConnectionBadge(rule, clientStats) {
+    if (!clientStats) {
+        return '<span class="badge bg-secondary">0</span>';
+    }
+
+    if (rule.protocol === 'UDP' && clientStats.downstreamClientCount !== undefined) {
+        // UDP广播模式显示详细统计
+        const total = clientStats.connectionCount || 0;
+        const downstream = clientStats.downstreamClientCount || 0;
+        const upstream = clientStats.upstreamClientCount || 0;
+
+        return `
+            <span class="badge bg-primary" title="总客户端数">${total}</span>
+            <small class="text-muted">
+                (下游: <span class="badge bg-info">${downstream}</span>
+                上游: <span class="badge bg-success">${upstream}</span>)
+            </small>
+        `;
+    } else {
+        // 传统模式显示总数
+        return `<span class="badge bg-primary">${clientStats.connectionCount || 0}</span>`;
+    }
 }
 
 function calculateDuration(startTime) {
@@ -2076,4 +2322,72 @@ function testWebSocketStatus() {
         console.error('测试状态推送失败:', error);
         showToast('测试状态推送失败', 'error');
     });
+}
+
+// 显示UDP使用说明
+function showUdpUsageHelp() {
+    try {
+        const modalElement = document.getElementById('udpUsageModal');
+        if (!modalElement) {
+            console.error('UDP使用说明模态框元素未找到');
+            showToast('无法显示使用说明', 'error');
+            return;
+        }
+
+        // 检查Bootstrap是否可用
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            // 使用Bootstrap 5的方式
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+        } else if (typeof $ !== 'undefined' && $.fn.modal) {
+            // 回退到jQuery + Bootstrap 4的方式
+            $(modalElement).modal('show');
+        } else {
+            // 手动显示模态框
+            modalElement.style.display = 'block';
+            modalElement.classList.add('show');
+            document.body.classList.add('modal-open');
+
+            // 添加背景遮罩
+            const backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop fade show';
+            backdrop.id = 'udpModalBackdrop';
+            document.body.appendChild(backdrop);
+
+            // 点击关闭按钮或背景关闭模态框
+            const closeButtons = modalElement.querySelectorAll('[data-bs-dismiss="modal"], .btn-close');
+            closeButtons.forEach(btn => {
+                btn.onclick = () => closeUdpUsageModal();
+            });
+            backdrop.onclick = () => closeUdpUsageModal();
+        }
+
+        console.log('UDP使用说明模态框已显示');
+
+    } catch (error) {
+        console.error('显示UDP使用说明失败:', error);
+        showToast('显示使用说明失败', 'error');
+    }
+}
+
+// 关闭UDP使用说明模态框
+function closeUdpUsageModal() {
+    try {
+        const modalElement = document.getElementById('udpUsageModal');
+        const backdrop = document.getElementById('udpModalBackdrop');
+
+        if (modalElement) {
+            modalElement.style.display = 'none';
+            modalElement.classList.remove('show');
+        }
+
+        if (backdrop) {
+            backdrop.remove();
+        }
+
+        document.body.classList.remove('modal-open');
+
+    } catch (error) {
+        console.error('关闭UDP使用说明失败:', error);
+    }
 }

@@ -38,6 +38,9 @@ public class MetricsService {
 
     @Autowired(required = false)
     private com.ux.relay.controller.WebSocketController webSocketController;
+
+    @Autowired(required = false)
+    private com.ux.relay.core.UdpSessionManager udpSessionManager;
     private final AtomicLong transferErrors = new AtomicLong(0);
     private final AtomicLong bytesTransferred = new AtomicLong(0);
     private final AtomicLong forwardingRuleCount = new AtomicLong(0);
@@ -371,6 +374,18 @@ public class MetricsService {
                 metricsData.put("forwardingRuleCount", snapshot.getForwardingRuleCount());
                 metricsData.put("bytesPerSecond", snapshot.getBytesPerSecond());
                 metricsData.put("errorRate", snapshot.getErrorRate());
+
+                // 添加UDP会话统计
+                if (udpSessionManager != null) {
+                    try {
+                        com.ux.relay.core.UdpSessionManager.SessionStats sessionStats = udpSessionManager.getSessionStats();
+                        metricsData.put("udpActiveSessions", sessionStats.getActiveSessions());
+                        metricsData.put("udpTotalSessions", sessionStats.getTotalSessions());
+                        metricsData.put("udpExpiredSessions", sessionStats.getExpiredSessions());
+                    } catch (Exception e) {
+                        logger.warn("获取UDP会话统计失败", e);
+                    }
+                }
 
                 webSocketController.sendMetrics(metricsData);
             } catch (Exception e) {

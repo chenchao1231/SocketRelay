@@ -4,6 +4,8 @@ import com.ux.relay.entity.ForwardRule;
 import com.ux.relay.service.ForwardRuleService;
 import com.ux.relay.core.ConnectionPoolManager;
 import com.ux.relay.core.ClientConnectionManager;
+import com.ux.relay.core.UdpBroadcastManager;
+import com.ux.relay.core.UdpBroadcastForwardingHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +44,9 @@ public class ForwardRuleController {
 
     @Autowired
     private ClientConnectionManager clientConnectionManager;
+
+    @Autowired
+    private UdpBroadcastManager udpBroadcastManager;
 
     @Autowired
     private com.ux.relay.service.ClientListenerStatusService clientListenerStatusService;
@@ -295,7 +300,27 @@ public class ForwardRuleController {
                 ConnectionPoolManager.ConnectionPoolStatus poolStatus =
                     connectionPoolManager.getPoolStatus(rule.getId());
 
-                int clientCount = clientConnectionManager.getClientConnectionCount(rule.getId());
+                int clientCount;
+
+                // 对于UDP协议，尝试从UDP广播管理器获取实时客户端数量
+                if (rule.getProtocol() == ForwardRule.ProtocolType.UDP) {
+                    try {
+                        UdpBroadcastForwardingHandler handler = udpBroadcastManager.getHandler(rule.getId());
+                        if (handler != null) {
+                            UdpBroadcastForwardingHandler.ClientStatistics stats = handler.getClientStatistics();
+                            clientCount = stats.getTotalClientCount();
+                        } else {
+                            // 如果UDP广播处理器不存在，使用传统方法
+                            clientCount = clientConnectionManager.getClientConnectionCount(rule.getId());
+                        }
+                    } catch (Exception e) {
+                        logger.warn("获取UDP广播客户端统计失败，使用传统方法: ruleId={}", rule.getId(), e);
+                        clientCount = clientConnectionManager.getClientConnectionCount(rule.getId());
+                    }
+                } else {
+                    // 对于TCP协议，使用传统方法
+                    clientCount = clientConnectionManager.getClientConnectionCount(rule.getId());
+                }
 
                 RuleStatusOverview overview = new RuleStatusOverview(
                     rule.getId(),

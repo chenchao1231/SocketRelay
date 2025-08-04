@@ -263,6 +263,13 @@
                                                 </button>
                                             </div>
                                         </div>
+                                        <div class="row mt-2">
+                                            <div class="col-md-12">
+                                                <button class="btn btn-outline-primary btn-sm w-100" onclick="showUdpUsageHelp()">
+                                                    <i class="bi bi-question-circle"></i> 测试UDP使用说明
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -290,10 +297,10 @@
                                             <tr>
                                                 <th>规则名称</th>
                                                 <th>协议</th>
-                                                <th>源端口</th>
-                                                <th>数据源连接地址</th>
-                                                <th>数据源状态</th>
-                                                <th>客户端数</th>
+                                                <th>监听端口</th>
+                                                <th>转发配置</th>
+                                                <th>服务状态</th>
+                                                <th>连接数</th>
                                                 <th>规则状态</th>
                                                 <th>操作</th>
                                             </tr>
@@ -517,28 +524,41 @@
                                 <div class="mb-3">
                                     <label for="protocol" class="form-label">协议类型</label>
                                     <select class="form-select" id="protocol" required>
-                                        <option value="TCP">TCP</option>
-                                        <option value="UDP">UDP</option>
-                                        <option value="TCP_UDP">TCP+UDP</option>
+                                        <option value="TCP">TCP - 点对点转发</option>
+                                        <option value="UDP">UDP - 一对多广播</option>
+                                        <option value="TCP_UDP">TCP+UDP - 混合模式</option>
                                     </select>
+                                    <div class="form-text">
+                                        <div id="protocolHelp">
+                                            <strong>TCP</strong>: 传统的点对点转发模式<br>
+                                            <strong>UDP</strong>: 一对多广播模式，支持客户端订阅机制<br>
+                                            <strong>TCP+UDP</strong>: 同时支持TCP和UDP协议
+                                        </div>
+                                        <button type="button" class="btn btn-link btn-sm p-0 mt-1" onclick="showUdpUsageHelp()">
+                                            <i class="bi bi-question-circle"></i> UDP广播模式使用说明
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="row">
                                     <div class="col-md-6">
                                         <div class="mb-3">
-                                            <label for="sourcePort" class="form-label">源端口</label>
+                                            <label for="sourcePort" class="form-label" id="sourcePortLabel">监听端口</label>
                                             <input type="number" class="form-control" id="sourcePort" min="1" max="65535" required>
+                                            <div class="form-text" id="sourcePortHelp">本服务监听的端口号</div>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="mb-3">
-                                            <label for="targetPort" class="form-label">目标端口</label>
+                                            <label for="targetPort" class="form-label" id="targetPortLabel">转发目标端口</label>
                                             <input type="number" class="form-control" id="targetPort" min="1" max="65535" required>
+                                            <div class="form-text" id="targetPortHelp">数据转发到的目标端口</div>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <label for="targetIp" class="form-label">目标IP</label>
+                                    <label for="targetIp" class="form-label" id="targetIpLabel">转发目标IP</label>
                                     <input type="text" class="form-control" id="targetIp" required>
+                                    <div class="form-text" id="targetIpHelp">数据转发到的目标服务器IP地址</div>
                                 </div>
                                 <div class="mb-3">
                                     <label for="dataSourceName" class="form-label">数据源连接地址名称</label>
@@ -593,7 +613,52 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- UDP使用说明模态框 -->
+    <div class="modal fade" id="udpUsageModal" tabindex="-1" aria-labelledby="udpUsageModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="udpUsageModalLabel">
+                        <i class="bi bi-broadcast"></i> UDP广播转发使用说明
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <h6><i class="bi bi-diagram-3"></i> 双端口架构说明</h6>
+                        <p><strong>下游监听端口</strong>：供客户端连接、订阅和接收广播数据<br>
+                        <strong>上游接收端口</strong>：接收需要广播的原始数据</p>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-success">下游客户端操作</h6>
+                            <div class="bg-light p-2 rounded mb-2">
+                                <small><strong>订阅：</strong></small><br>
+                                <code>echo 'SUBSCRIBE' | nc -u IP 下游端口</code>
+                            </div>
+                            <div class="bg-light p-2 rounded mb-2">
+                                <small><strong>心跳：</strong></small><br>
+                                <code>echo 'HEARTBEAT' | nc -u IP 下游端口</code>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-warning">上游数据发送</h6>
+                            <div class="bg-light p-2 rounded mb-2">
+                                <small><strong>发送数据：</strong></small><br>
+                                <code>echo '数据' | nc -u IP 上游端口</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.2/dist/sockjs.min.js"></script>
