@@ -51,20 +51,30 @@ public class WebSocketEventListener {
     /**
      * WebSocket连接断开事件
      */
+    /**
+     * WebSocket连接断开事件
+     */
     @EventListener
     public void handleWebSocketDisconnectListener(SessionDisconnectEvent event) {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
         String sessionId = headerAccessor.getSessionId();
-        
+
         // 移除会话信息
         SessionInfo sessionInfo = sessions.remove(sessionId);
-        
-        int currentConnections = activeConnections.decrementAndGet();
-        
+
+        // 确保活跃连接数不会变成负数
+        int currentConnections = activeConnections.get();
+        if (currentConnections > 0) {
+            currentConnections = activeConnections.decrementAndGet();
+        } else {
+            currentConnections = activeConnections.get();
+            logger.warn("WebSocket连接断开时发现活跃连接数异常: sessionId={}, 当前活跃连接数: {}", sessionId, currentConnections);
+        }
+
         if (sessionInfo != null) {
             long duration = System.currentTimeMillis() - sessionInfo.getConnectedAt();
-            logger.info("WebSocket连接断开: sessionId={}, 连接持续时间: {}ms, 当前活跃连接数: {}", 
-                       sessionId, duration, currentConnections);
+            logger.info("WebSocket连接断开: sessionId={}, 连接持续时间: {}ms, 当前活跃连接数: {}",
+                    sessionId, duration, currentConnections);
         } else {
             logger.info("WebSocket连接断开: sessionId={}, 当前活跃连接数: {}", sessionId, currentConnections);
         }

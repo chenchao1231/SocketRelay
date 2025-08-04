@@ -8,7 +8,98 @@ let currentPage = 'dashboard';
 document.addEventListener('DOMContentLoaded', function() {
     // 首先检查session是否有效
     checkSessionAndInitialize();
+
+    // 监听浏览器前进后退事件
+    window.addEventListener('popstate', function(event) {
+        if (event.state && event.state.page) {
+            showPage(event.state.page, false); // false表示不更新URL
+        } else {
+            // 如果没有状态，从URL获取当前页面
+            const currentPage = getCurrentPageFromUrl();
+            showPage(currentPage, false);
+        }
+    });
 });
+
+// URL路由相关函数
+
+// 从URL获取当前页面
+function getCurrentPageFromUrl() {
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#')) {
+        const page = hash.substring(1);
+        // 验证页面是否有效
+        const validPages = ['dashboard', 'rules', 'connections', 'metrics', 'alerts', 'ip-access', 'logs'];
+        return validPages.includes(page) ? page : 'dashboard';
+    }
+    return 'dashboard';
+}
+
+// 更新URL而不刷新页面
+function updateUrl(page) {
+    const newUrl = `${window.location.pathname}#${page}`;
+    window.history.pushState({ page: page }, '', newUrl);
+}
+
+// 设置页面标题
+function setPageTitle(page) {
+    const titles = {
+        'dashboard': '仪表板 - Socket Relay管理系统',
+        'rules': '转发规则 - Socket Relay管理系统',
+        'connections': '连接管理 - Socket Relay管理系统',
+        'metrics': '监控指标 - Socket Relay管理系统',
+        'alerts': '告警中心 - Socket Relay管理系统',
+        'ip-access': 'IP访问控制 - Socket Relay管理系统',
+        'logs': '审计日志 - Socket Relay管理系统'
+    };
+
+    document.title = titles[page] || 'Socket Relay管理系统';
+}
+
+// 更新导航状态
+function updateNavigation(pageName) {
+    // 移除所有导航链接的active状态
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+
+    // 为当前页面的导航链接添加active状态
+    const currentNavLink = document.querySelector(`[onclick*="showPage('${pageName}')"]`) ||
+                           document.querySelector(`[data-page="${pageName}"]`);
+    if (currentNavLink) {
+        currentNavLink.classList.add('active');
+    }
+}
+
+// 绑定导航事件
+function bindNavigationEvents() {
+    console.log('绑定导航事件...');
+
+    // 为所有导航链接添加事件监听器
+    document.querySelectorAll('.nav-link[onclick*="showPage"]').forEach(link => {
+        const onclickAttr = link.getAttribute('onclick');
+        if (onclickAttr) {
+            // 提取页面名称
+            const match = onclickAttr.match(/showPage\('([^']+)'\)/);
+            if (match) {
+                const pageName = match[1];
+                link.setAttribute('data-page', pageName);
+
+                // 移除原有的onclick属性
+                link.removeAttribute('onclick');
+
+                // 添加新的事件监听器
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('导航点击:', pageName);
+                    showPage(pageName);
+                });
+            }
+        }
+    });
+
+    console.log('导航事件绑定完成');
+}
 
 // IP访问控制相关函数
 
@@ -509,19 +600,24 @@ function checkSessionAndInitialize() {
 // 初始化应用
 function initializeApp() {
     console.log('初始化Socket Relay管理系统...');
-    
+
     // 初始化图表
     initializeCharts();
-    
+
     // 连接WebSocket
     connectWebSocket();
-    
-    // 加载初始数据
-    loadDashboardData();
-    
+
+    // 从URL获取当前页面并显示
+    const currentPage = getCurrentPageFromUrl();
+    console.log('初始化时的当前页面:', currentPage);
+    showPage(currentPage, false); // false表示不更新URL，因为URL已经是正确的
+
     // 设置定时刷新
     setInterval(refreshCurrentPageData, 5000); // 每5秒刷新一次
-    
+
+    // 绑定导航事件
+    bindNavigationEvents();
+
     console.log('系统初始化完成');
 }
 
@@ -590,6 +686,7 @@ function initializeCharts() {
 }
 
 // 连接WebSocket
+// 连接WebSocket
 function connectWebSocket() {
     try {
         // 检查是否有Stomp库
@@ -610,13 +707,21 @@ function connectWebSocket() {
 
         stompClient = new StompJs.Client({
             brokerURL: wsUrl,
-            connectHeaders: {},
+            connectHeaders: {
+                // 添加认证头，确保WebSocket连接可以成功通过认证
+                'Authorization': 'Bearer ' + getAuthToken() // 如果使用token认证
+            },
             debug: function (str) {
                 console.log('STOMP: ' + str);
             },
             reconnectDelay: 5000,
             heartbeatIncoming: 4000,
             heartbeatOutgoing: 4000,
+            // 确保WebSocket连接携带认证信息
+            webSocketFactory: function () {
+                const socket = new SockJS('/ws');
+                return socket;
+            }
         });
 
         stompClient.onConnect = function (frame) {
@@ -626,9 +731,33 @@ function connectWebSocket() {
             stompClient.subscribe('/topic/alerts', function(message) {
                 try {
                     const alert = JSON.parse(message.body);
+                    console.log('收到告警消息:', alert);
                     showAlert(alert);
+                    showToast(alert.message || '收到新告警', alert.level || 'info');
                 } catch (e) {
                     console.error('解析告警消息失败:', e);
+                }
+            });
+
+            // 订阅实时指标
+            stompClient.subscribe('/topic/metrics', function(message) {
+                try {
+                    const metrics = JSON.parse(message.body);
+                    console.log('收到实时指标:', metrics);
+                    // 可以在这里更新仪表板的实时数据
+                } catch (e) {
+                    console.error('解析指标消息失败:', e);
+                }
+            });
+
+            // 订阅状态更新
+            stompClient.subscribe('/topic/status', function(message) {
+                try {
+                    const status = JSON.parse(message.body);
+                    console.log('收到状态更新:', status);
+                    showToast(`${status.component}: ${status.message}`, 'info');
+                } catch (e) {
+                    console.error('解析状态消息失败:', e);
                 }
             });
         };
@@ -655,10 +784,12 @@ function connectWebSocket() {
 }
 
 // 后备的WebSocket连接方法（使用SockJS + 旧版本Stomp）
+// 后备的WebSocket连接方法（使用SockJS + 旧版本Stomp）
 function tryLegacyWebSocket() {
     try {
-        if (typeof SockJS === 'undefined' || typeof Stomp === 'undefined') {
-            console.warn('WebSocket库未完全加载，跳过连接');
+        // 检查SockJS是否可用
+        if (typeof SockJS === 'undefined') {
+            console.warn('SockJS库未加载，无法建立WebSocket连接');
             return;
         }
 
@@ -667,22 +798,64 @@ function tryLegacyWebSocket() {
             return;
         }
 
-        const socket = new SockJS('/ws');
-        stompClient = Stomp.over(socket);
+        // 创建SockJS连接时确保携带认证信息
+        const socket = new SockJS('/ws', null, {
+            // 确保携带cookie等认证信息
+            transports: ['websocket', 'xhr-streaming', 'iframe-eventsource', 'iframe-htmlfile', 'xhr-polling']
+        });
+
+        // 检查是否有全局的Stomp对象
+        if (typeof Stomp !== 'undefined') {
+            stompClient = Stomp.over(socket);
+        } else if (typeof StompJs !== 'undefined' && StompJs.Stomp) {
+            stompClient = StompJs.Stomp.over(socket);
+        } else {
+            console.warn('Stomp库未找到，无法建立WebSocket连接');
+            return;
+        }
 
         // 禁用调试输出
         stompClient.debug = null;
 
-        stompClient.connect({}, function(frame) {
+        // 添加连接头确保认证
+        const headers = {
+            // 如果使用token认证，需要添加token
+            // 'Authorization': 'Bearer ' + getAuthToken()
+        };
+
+        stompClient.connect(headers, function(frame) {
             console.log('WebSocket连接成功 (SockJS)');
 
             // 订阅告警消息
             stompClient.subscribe('/topic/alerts', function(message) {
                 try {
                     const alert = JSON.parse(message.body);
+                    console.log('收到告警消息 (SockJS):', alert);
                     showAlert(alert);
+                    showToast(alert.message || '收到新告警', alert.level || 'info');
                 } catch (e) {
                     console.error('解析告警消息失败:', e);
+                }
+            });
+
+            // 订阅实时指标
+            stompClient.subscribe('/topic/metrics', function(message) {
+                try {
+                    const metrics = JSON.parse(message.body);
+                    console.log('收到实时指标 (SockJS):', metrics);
+                } catch (e) {
+                    console.error('解析指标消息失败:', e);
+                }
+            });
+
+            // 订阅状态更新
+            stompClient.subscribe('/topic/status', function(message) {
+                try {
+                    const status = JSON.parse(message.body);
+                    console.log('收到状态更新 (SockJS):', status);
+                    showToast(`${status.component}: ${status.message}`, 'info');
+                } catch (e) {
+                    console.error('解析状态消息失败:', e);
                 }
             });
 
@@ -696,26 +869,32 @@ function tryLegacyWebSocket() {
             }, 30000);
         });
     } catch (error) {
-        console.warn('WebSocket初始化失败，系统将在无WebSocket模式下运行');
+        console.warn('WebSocket初始化失败，系统将在无WebSocket模式下运行:', error);
     }
 }
 
 // 显示页面
-function showPage(pageName) {
+function showPage(pageName, updateUrlFlag = true) {
+    console.log('showPage调用:', pageName, 'updateUrlFlag:', updateUrlFlag);
+
     // 隐藏所有页面
     document.querySelectorAll('.page-content').forEach(page => {
         page.style.display = 'none';
     });
-    
+
     // 显示指定页面
-    document.getElementById(pageName + '-page').style.display = 'block';
-    
+    const targetPage = document.getElementById(pageName + '-page');
+    console.log('目标页面元素:', targetPage);
+    if (targetPage) {
+        targetPage.style.display = 'block';
+        console.log('页面已显示:', pageName);
+    } else {
+        console.error('找不到页面元素:', pageName + '-page');
+    }
+
     // 更新导航状态
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
+    updateNavigation(pageName);
+
     // 更新页面标题
     const titles = {
         'dashboard': '仪表板',
@@ -726,10 +905,22 @@ function showPage(pageName) {
         'ip-access': 'IP访问控制',
         'logs': '审计日志'
     };
-    document.getElementById('page-title').textContent = titles[pageName];
-    
+
+    const pageTitle = document.getElementById('page-title');
+    if (pageTitle) {
+        pageTitle.textContent = titles[pageName] || '未知页面';
+    }
+
+    // 设置浏览器标题
+    setPageTitle(pageName);
+
+    // 更新URL（如果需要）
+    if (updateUrlFlag) {
+        updateUrl(pageName);
+    }
+
     currentPage = pageName;
-    
+
     // 加载页面数据
     loadPageData(pageName);
 }
@@ -1720,7 +1911,7 @@ function showToast(message, type) {
     if (!toastContainer) {
         toastContainer = document.createElement('div');
         toastContainer.id = 'toast-container';
-        toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+        toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
         toastContainer.style.zIndex = '9999';
         document.body.appendChild(toastContainer);
     }
@@ -1811,4 +2002,78 @@ function logout() {
             window.location.href = '/login';
         });
     }
+}
+
+// 加载告警数据
+function loadAlertsData() {
+    console.log('加载告警数据...');
+    // TODO: 实现告警数据加载逻辑
+    // 这里可以添加获取告警数据的API调用
+}
+
+// 加载日志数据
+function loadLogsData() {
+    console.log('加载审计日志数据...');
+    // TODO: 实现审计日志数据加载逻辑
+    // 这里可以添加获取审计日志的API调用
+}
+
+// WebSocket测试函数
+function testWebSocketAlert() {
+    fetch('/api/websocket/test-alert', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'message=这是一个测试告警消息&level=warning'
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('测试告警推送结果:', data);
+        if (data.success) {
+            showToast('测试告警已发送，请查看控制台和告警区域', 'success');
+        }
+    })
+    .catch(error => {
+        console.error('测试告警推送失败:', error);
+        showToast('测试告警推送失败', 'error');
+    });
+}
+
+function testWebSocketMetrics() {
+    fetch('/api/websocket/test-metrics', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('测试指标推送结果:', data);
+        if (data.success) {
+            showToast('测试指标已发送，请查看控制台', 'success');
+        }
+    })
+    .catch(error => {
+        console.error('测试指标推送失败:', error);
+        showToast('测试指标推送失败', 'error');
+    });
+}
+
+function testWebSocketStatus() {
+    fetch('/api/websocket/test-status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'component=测试组件&status=正常&message=这是一个测试状态更新消息'
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('测试状态推送结果:', data);
+        if (data.success) {
+            showToast('测试状态更新已发送', 'success');
+        }
+    })
+    .catch(error => {
+        console.error('测试状态推送失败:', error);
+        showToast('测试状态推送失败', 'error');
+    });
 }

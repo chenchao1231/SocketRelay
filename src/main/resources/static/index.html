@@ -237,6 +237,36 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- WebSocket测试区域 -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6 class="m-0 font-weight-bold text-primary">WebSocket测试</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <button class="btn btn-outline-info btn-sm w-100" onclick="testWebSocketAlert()">
+                                                    <i class="bi bi-bell"></i> 测试告警推送
+                                                </button>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <button class="btn btn-outline-success btn-sm w-100" onclick="testWebSocketMetrics()">
+                                                    <i class="bi bi-graph-up"></i> 测试指标推送
+                                                </button>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <button class="btn btn-outline-warning btn-sm w-100" onclick="testWebSocketStatus()">
+                                                    <i class="bi bi-info-circle"></i> 测试状态推送
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- 其他页面内容将通过JavaScript动态加载 -->

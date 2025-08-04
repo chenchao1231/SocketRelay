@@ -3,10 +3,15 @@ package com.ux.relay.controller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -20,6 +25,8 @@ import java.util.Map;
  * @since 2025-08-03
  */
 @Controller
+@RestController
+@RequestMapping("/api/websocket")
 public class WebSocketController {
     
     private static final Logger logger = LoggerFactory.getLogger(WebSocketController.class);
@@ -116,5 +123,51 @@ public class WebSocketController {
         
         logger.info("发送系统状态更新: {}", statusUpdate);
         messagingTemplate.convertAndSend("/topic/status", statusUpdate);
+    }
+
+    /**
+     * 测试WebSocket推送 - REST API
+     */
+    @PostMapping("/test-alert")
+    public ResponseEntity<?> testAlert(@RequestParam(defaultValue = "测试告警消息") String message,
+                                       @RequestParam(defaultValue = "info") String level) {
+        sendAlert("test", message, level);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "测试告警已发送");
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * 测试WebSocket指标推送 - REST API
+     */
+    @PostMapping("/test-metrics")
+    public ResponseEntity<?> testMetrics() {
+        Map<String, Object> testMetrics = new HashMap<>();
+        testMetrics.put("activeConnections", 10);
+        testMetrics.put("totalConnections", 100);
+        testMetrics.put("connectionErrors", 2);
+        testMetrics.put("bytesTransferred", 1024000);
+        testMetrics.put("timestamp", LocalDateTime.now().toString());
+
+        sendMetrics(testMetrics);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "测试指标已发送");
+        return ResponseEntity.ok().body(response);
+    }
+
+    /**
+     * 测试WebSocket状态更新 - REST API
+     */
+    @PostMapping("/test-status")
+    public ResponseEntity<?> testStatus(@RequestParam(defaultValue = "system") String component,
+                                        @RequestParam(defaultValue = "running") String status,
+                                        @RequestParam(defaultValue = "系统运行正常") String message) {
+        sendStatusUpdate(component, status, message);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "测试状态更新已发送");
+        return ResponseEntity.ok().body(response);
     }
 }
